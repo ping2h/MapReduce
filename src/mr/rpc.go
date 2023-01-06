@@ -14,14 +14,28 @@ import "strconv"
 // and reply for an RPC.
 //
 
+
 type ExampleArgs struct {
-	X int
+	Job JobType
+	Seq int
 }
 
 type ExampleReply struct {
-	Y int
+	Job JobType
+	Filename string
+	NReduce int
+	Seq int
+	NMap int
+
 }
 
+type JobType int
+const (
+	MAPJOB JobType = iota
+	REDUCEJOB
+	WAITJOB
+	COMPLETEJOB
+)
 // Add your RPC definitions here.
 
 

@@ -89,12 +89,14 @@ func (c *Coordinator) ImDone(args *ExampleArgs, reply *ExampleReply) error {
 	changePhase := true
 	if args.Job == MAPJOB {										//map -> reduce
 		c.tasks[args.Seq].status = COMPLETED
+		log.Printf("worker has finished a map task")
 		for _, v := range c.tasks {
 			if v.status == IDLE || v.status == INPROGRESS {
 				changePhase = false
 			}
 		}
-		if changePhase == true {								
+		if changePhase == true {	
+			log.Printf("going to reduce phase")					
 			c.phase = REDUCE
 			tasks := initReduceTask(c.nReduce)
 			c.tasks = append(c.tasks, tasks...)
@@ -102,12 +104,14 @@ func (c *Coordinator) ImDone(args *ExampleArgs, reply *ExampleReply) error {
 															  //reduce -> done
 	} else if args.Job == REDUCEJOB {
 		c.tasks[args.Seq+c.nMap].status = COMPLETED
+		log.Printf("worker has finished a reduce task")
 		for _, v := range c.tasks[c.nMap:] {
 			if v.status == IDLE || v.status == INPROGRESS {
 				changePhase = false
 			}
 		}
-		if changePhase == true {								
+		if changePhase == true {	
+			log.Printf("Done!")								
 			c.phase = DONE
 		}
 	}
@@ -183,7 +187,9 @@ func (c *Coordinator) server() {
 func (c *Coordinator) Done() bool {
 	ret := false
 
-	// Your code here.
+	if c.phase == DONE {
+		ret = true
+	}
 
 
 	return ret
@@ -227,6 +233,7 @@ func initReduceTask(nReduce int) []Task {
 	for i < nReduce {
 		task := Task{id: i, status: IDLE}
 		tasks = append(tasks, task)
+		i++
 	}
 
 	log.Println("initializing Reduce tasks")

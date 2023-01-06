@@ -80,8 +80,8 @@ func doHeartbeat() ExampleReply {
 }
 
 func doMapTask(mapf func(string, string) []KeyValue, reply ExampleReply) {
-
-	filename := "../main/" + reply.Filename
+	log.Printf("doing this map task...")
+	filename := reply.Filename //"../main/" + 
 	file, err := os.Open(filename)
 	if err != nil {
 		log.Fatalf("cannot open %v", filename)
@@ -168,6 +168,7 @@ func doReduceTask(reducef func(string, []string) string, reply ExampleReply) {
 }
 
 func ImDone(job JobType, seq int) {
+	log.Printf("done with this map task")
 	args := ExampleArgs{Job: job, Seq: seq}
 	reply := ExampleReply{}
 	ok := call("Coordinator.ImDone", &args, &reply)

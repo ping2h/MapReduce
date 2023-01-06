@@ -6,6 +6,7 @@ import "os"
 import "net/rpc"
 import "net/http"
 import "time"
+import "sync"
 
 func init () {
 	log.SetFlags(log.Ldate|log.Ltime|log.Lshortfile)
@@ -13,6 +14,7 @@ func init () {
 
 type Coordinator struct {
 	// Your definitions here.
+	mu sync.Mutex
 	files []string
 	tasks []Task
 	nMap int          //num of files
@@ -51,6 +53,8 @@ const (
 // and detect whether is there any overtimed task 
 //
 func (c *Coordinator) TellMeWTD(args *ExampleArgs, reply *ExampleReply) error {
+	c.mu.Lock()
+    defer c.mu.Unlock()
 	log.Printf("allocating a new task...")
 	checkCrash(c)
 	if c.phase == MAP {
@@ -86,6 +90,8 @@ func (c *Coordinator) TellMeWTD(args *ExampleArgs, reply *ExampleReply) error {
 // and change phase
 //
 func (c *Coordinator) ImDone(args *ExampleArgs, reply *ExampleReply) error {
+	c.mu.Lock()
+    defer c.mu.Unlock()
 	changePhase := true
 	if args.Job == MAPJOB {										//map -> reduce
 		c.tasks[args.Seq].status = COMPLETED

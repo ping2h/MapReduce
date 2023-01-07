@@ -11,10 +11,14 @@ import (
 	"sort"
 	"time"
 	"strconv"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 )
 
 func init() {
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	
 }
 // for sorting by key.
 type ByKey []KeyValue
@@ -45,8 +49,12 @@ func ihash(key string) int {
 //
 // main/mrworker.go calls this function.
 //
+var s3Svc = s3.New(session.New())
+
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
+
+	
 
 	// TODO 1
 	for {
@@ -82,15 +90,12 @@ func doHeartbeat() ExampleReply {
 func doMapTask(mapf func(string, string) []KeyValue, reply ExampleReply) {
 	log.Printf("doing this map task...")
 	filename := reply.Filename //"../main/" + 
-	file, err := os.Open(filename)
+
+	content, err:= getContentFromS3(filename)    //get 
 	if err != nil {
-		log.Fatalf("cannot open %v", filename)
+		log.Fatalf("cannot load %v", filename)
 	}
-	content, err := ioutil.ReadAll(file)
-	if err != nil {
-		log.Fatalf("cannot read %v", filename)
-	}
-	file.Close()
+
 	kva := mapf(filename, string(content))
 	sort.Sort(ByKey(kva))
 
@@ -102,20 +107,12 @@ func doMapTask(mapf func(string, string) []KeyValue, reply ExampleReply) {
 
 	for idx, l := range reduces {				  //output mr-x-y files
 		fileName := reduceName(reply.Seq, idx)
-		f, err := os.Create(fileName)
+		err := uploadContentToS3(filename, l)
 		if err != nil {
-			log.Fatalf("can not creat file: %v", err)
+			log.Fatalf("Error uploading file to S3:", err)
+			
 		}
-		enc := json.NewEncoder(f)
-		for _, kv := range l {
-			if err := enc.Encode(&kv); err != nil {
-				log.Fatalf("json ecoding: %v", err)
-			}
 
-		}
-		if err := f.Close(); err != nil {
-			log.Fatalf("closing file: %v", err)
-		}
 	}
 	
 
@@ -126,11 +123,17 @@ func doReduceTask(reducef func(string, []string) string, reply ExampleReply) {
 	kva := []KeyValue{}
 	for idx := 0; idx < reply.NMap; idx++ {
 		fileName := reduceName(idx, reply.Seq)
-		file, err := os.Open(fileName)
+		result, err := s3Svc.GetObject(&s3.GetObjectInput{  
+			Bucket: aws.String("mrfileschalmers"),
+			Key:    aws.String(filename),
+		})
 		if err != nil {
-			log.Fatalf("can not open file: %v", err)
+			log.Fatalf("can not load file: %v", err)
 		}
-		dec := json.NewDecoder(file)
+		defer result.Body.Close()
+
+
+		dec := json.NewDecoder(result.Body)
 		for {
 			var kv KeyValue
 			if err := dec.Decode(&kv); err != nil {
@@ -139,12 +142,14 @@ func doReduceTask(reducef func(string, []string) string, reply ExampleReply) {
 			kva = append(kva, kv)
 		}
 	}
+
+
 	sort.Sort(ByKey(kva))
 
 	oname := "mr-out-"+strconv.Itoa(reply.Seq)
-	ofile, _ := os.Create(oname)
-
 	
+	/////////////////////////////////////////// upload
+	buf := new(bytes.Buffer)
 	i := 0
 	for i < len(kva) {
 		j := i + 1
@@ -156,12 +161,21 @@ func doReduceTask(reducef func(string, []string) string, reply ExampleReply) {
 			values = append(values, kva[k].Value)
 		}
 		output := reducef(kva[i].Key, values)
-		fmt.Fprintf(ofile, "%v %v\n", kva[i].Key, output)
+		fmt.Fprintf(buf, "%v %v\n", kva[i].Key, output)
 
 		i = j
 	}
-
-	ofile.Close()
+	bt, _ := ioutil.ReadAll(buf)
+	reader := bytes.NewReader(bt)
+	result, err := s3Svc.PutObject(&s3.PutObjectInput{
+		Bucket: aws.String("mrfileschalmers"),
+		Key:    aws.String(oname),
+		Body:   reader,
+	})
+	if err != nil {
+		log.Fatalf("can not upload file: %v", err)
+	}
+	log.Println("Successfully uploaded reduce outcome file to S3. ETag:", *result.ETag)
 
 	ImDone(REDUCEJOB, reply.Seq)
 
@@ -198,4 +212,42 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 
 func reduceName(mapIdx, reduceIdx int) string {
 	return fmt.Sprintf("mr-%d-%d", mapIdx, reduceIdx)
+}
+
+
+func getContentFromS3(filename string) (string, error) {
+	result, err := s3Svc.GetObject(&s3.GetObjectInput{  
+		Bucket: aws.String("mrfileschalmers"),
+		Key:    aws.String(filename),
+	})
+	if err != nil {
+		log.Printf("Error downloading object", key, "from bucket", bucket, ":", err)
+		return  "", err
+	}
+	defer result.Body.Close()
+	content, err := ioutil.ReadAll(result.Body)
+	return string(content), err
+}
+
+func uploadContentToS3(filename string, l []KeyValue) error {
+	buf := new(bytes.Buffer)
+	enc := json.NewEncoder(buf)
+	for _, kv := range l {
+		if err := enc.Encode(&kv); err != nil {
+			return err
+		}
+
+	}
+	bt, _ := ioutil.ReadAll(buf)
+	reader := bytes.NewReader(bt)
+	result, err := s3Svc.PutObject(&s3.PutObjectInput{
+		Bucket: aws.String("mrfileschalmers"),
+		Key:    aws.String(filename),
+		Body:   reader,
+	})
+	if err != nil {
+		return err
+	}
+
+	log.Println("Successfully uploaded map outcome file to S3. ETag:", *result.ETag)
 }

@@ -68,6 +68,7 @@ func Worker(mapf func(string, string) []KeyValue,
 		case WAITJOB:
 			time.Sleep(1 * time.Second)
 		case COMPLETEJOB:
+			log.Println("master said I'm free")
 			return
 		default:
 			panic(fmt.Sprintf("unexpected jobType %v", response.Job))
@@ -192,7 +193,7 @@ func ImDone(job JobType, seq int) {
 }
 
 func call(rpcname string, args interface{}, reply interface{}) bool {
-	c, err := rpc.DialHTTP("tcp", ":1234")
+	c, err := rpc.DialHTTP("tcp", ":9090")
 	// sockname := coordinatorSock()
 	// c, err := rpc.DialHTTP("unix", sockname)
 	if err != nil {

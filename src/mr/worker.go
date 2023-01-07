@@ -7,7 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/rpc"
-	"os"
+	"bytes"
 	"sort"
 	"time"
 	"strconv"
@@ -107,7 +107,7 @@ func doMapTask(mapf func(string, string) []KeyValue, reply ExampleReply) {
 
 	for idx, l := range reduces {				  //output mr-x-y files
 		fileName := reduceName(reply.Seq, idx)
-		err := uploadContentToS3(filename, l)
+		err := uploadContentToS3(fileName, l)
 		if err != nil {
 			log.Fatalf("Error uploading file to S3:", err)
 			
@@ -125,7 +125,7 @@ func doReduceTask(reducef func(string, []string) string, reply ExampleReply) {
 		fileName := reduceName(idx, reply.Seq)
 		result, err := s3Svc.GetObject(&s3.GetObjectInput{  
 			Bucket: aws.String("mrfileschalmers"),
-			Key:    aws.String(filename),
+			Key:    aws.String(fileName),
 		})
 		if err != nil {
 			log.Fatalf("can not load file: %v", err)
@@ -221,7 +221,7 @@ func getContentFromS3(filename string) (string, error) {
 		Key:    aws.String(filename),
 	})
 	if err != nil {
-		log.Printf("Error downloading object", key, "from bucket", bucket, ":", err)
+		log.Printf("Error downloading object from bucket ", err)
 		return  "", err
 	}
 	defer result.Body.Close()
@@ -250,4 +250,5 @@ func uploadContentToS3(filename string, l []KeyValue) error {
 	}
 
 	log.Println("Successfully uploaded map outcome file to S3. ETag:", *result.ETag)
+	return nil
 }
